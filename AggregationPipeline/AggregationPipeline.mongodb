@@ -72,6 +72,8 @@ db.orders.aggregate([{
   ])
 
 //---------------------------------------------------------------------------
+//import 
+//mongoimport persons.json -d personsAnalytics -c personsData --jsonArray
 
   use('personsAnalytics')
   db.personsData.findOne()
@@ -389,11 +391,15 @@ db.personsData.aggregate([
 
 
 /// WORKING WITH ARRAYS 
-use ('arraysDb')
+
+//import 
+//mongoimport array-data.json -d arraysDB -c friends --jsonArray
+
+use ('arraysDB')
 db.friends.findOne()
 
 //two ways of group 
-use ('arraysDb')
+use ('arraysDB')
 db.friends.aggregate([
   {
     $group: {
@@ -403,8 +409,8 @@ db.friends.aggregate([
   }
 ])
 
-//in this way is more cleare 
-use ('arraysDb')
+//in this way is more clear
+use ('arraysDB')
 db.friends.aggregate([
   {
     $group: {
@@ -419,7 +425,7 @@ db.friends.aggregate([
 //$push - to push a new element to a new array for every incoming document 
 
 //to push hobbies in the new array 
-use('arraysDb')
+use('arraysDB')
 db.friends.aggregate([
   {
     $group: {
@@ -436,7 +442,7 @@ db.friends.aggregate([
 //it with the array elements 
 //unwind - takes one document and spits out multiple documents 
 
-use('arraysDb')
+use('arraysDB')
 db.friends.aggregate([
   {
     /**
@@ -451,7 +457,7 @@ db.friends.aggregate([
 
 //creates an array with the elements corresponding to the hobbies array
 //generate duplicates values 
-use('arraysDb')
+use('arraysDB')
 db.friends.aggregate([
   {
     $unwind: '$hobbies'
@@ -471,7 +477,7 @@ db.friends.aggregate([
 //$addToSet - push and avoids duplicate values 
 //if finds an entry that exists - is not pushed as a new value into the array 
 //DO THE SAME AS $push but avoid duplicate values 
-use('arraysDb')
+use('arraysDB')
 db.friends.aggregate([
   {
     $unwind: '$hobbies'
@@ -487,23 +493,26 @@ db.friends.aggregate([
   }
 ])
 
+//with unwind, push and addtoSet - powerful features to manage array data efficiently
+//and transform it into the required format 
 
 //PROJECTIONS WITH ARRAYS 
 //slice: allows to get back an slice of an array 
 //slice: {array, 1} array and the number of elements to get from the array 
 //slice: {array, 0, 1} -starts on position 1 and get one element - get the first 
-use('arraysDb')
+use('arraysDB')
 db.friends.findOne()
 
-use('arraysDb')
+use('arraysDB')
 db.friends.aggregate([
   {
     $project: {_id: 0, 
     examScores: {$slice: ["$examScores", 1]} }
   }])
 
+
   
-use('arraysDb')
+use('arraysDB')
 db.friends.aggregate([
   {
     $project: {_id: 0, 
@@ -511,7 +520,7 @@ db.friends.aggregate([
   }])
 
   
-use('arraysDb')
+use('arraysDB')
 db.friends.aggregate([
   {
     $project: {_id: 0, 
@@ -522,7 +531,7 @@ db.friends.aggregate([
 //works with indexes for arrays - start 0  
 //array of 3 elements - index 0, 1,2
   
-use('arraysDb')
+use('arraysDB')
 db.friends.aggregate([
   {
     $project: {_id: 0, 
@@ -532,7 +541,8 @@ db.friends.aggregate([
 
   //len 
   //how many exams - 3 get the size of the examScores array for every document 
-  use('arraysDb')
+  
+use('arraysDB')
   db.friends.aggregate([
     {
       $project: {
@@ -545,7 +555,7 @@ db.friends.aggregate([
 //see scores greater than 60
 //filter: filter out elements of one array
 //only return values that fulfill the condition 
-use('arraysDb')
+use('arraysDB')
 db.friends.aggregate([
   {
     $project: {
@@ -560,4 +570,72 @@ db.friends.aggregate([
   //to access the values of sc variables we use $$
 ])
 
+//
+
 //with filter we only get scores greater than 60 
+
+use('arraysDB')
+db.friends.findOne()
+
+db.friends.aggregate([
+  {
+    $group: {
+      _id: {
+        age: "$age"
+      },
+      allHobbies: {
+        $push: "$hobbies"
+      }
+    }
+  }
+])
+
+//WITH $filter we can filter arrays in documents into the project phase 
+
+use('arraysDB')
+db.friends.findOne()
+
+//get the top score for every friend object 
+use('arraysDB')
+db.friends.aggregate([
+  {
+    $unwind: "$examScores"
+  },
+  {
+    $group: {
+      _id: '$_id',
+      name: {$first: "$name"},
+      maxScore: {$max: "$examScores.score"}
+    }
+  },
+  {
+    $sort: {
+      maxScore: -1
+    }
+  }
+])
+
+//getting the max score per friend using $first 
+use('arraysDB')
+db.friends.aggregate([
+  {
+    $unwind: "$examScores"
+  }, 
+  {
+    $sort: {"examScores.score": -1}
+  },
+  {
+    $project: {
+      name: 1,
+      score: "$examScores.score"
+    }
+  },
+  {
+    $group: {
+      _id: "$_id",
+      name: {$first: "$name"},
+      maxScore: {$first: "$score"}
+    }
+  }
+])
+
