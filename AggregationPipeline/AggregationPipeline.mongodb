@@ -638,4 +638,362 @@ db.friends.aggregate([
     }
   }
 ])
+//get masScore for any friend group by id, name and age
 
+use('arraysDB')
+db.friends.aggregate([
+  {
+    $unwind: "$examScores"
+  },
+  {
+    $group: {
+      _id: "$_id",
+      name: {$first: "$name"},
+      age: {$first: "$age"},
+      maxScore: {$max: "$examScores.score"}
+    }
+  },
+  {
+    $sort: {maxScore: -1}
+  }
+  ])
+
+  /////////////////////////////////////////////////////////////////
+  ///$bucket
+  //categorize incoming documents into groups - called buckets 
+  //this groups are based on expressions - boundaries 
+  //output - one document per bucket or group 
+  use('personsAnalytics')
+  db.personsData.findOne()
+
+  use('personsAnalytics')
+  db.personsData.aggregate([
+    {
+      /**
+       * groupBy: The expression to group by.
+       * boundaries: An array of the lower boundaries for each bucket.
+       * default: The bucket name for documents that do not fall within the specified boundaries
+       * output: {
+       *    outputN: Optional. The output object may contain a single or numerous field names used to accumulate values per bucket.
+       * }
+       */
+      $bucket: {
+        groupBy: "$dob.age",
+        boundaries: [ 0, 18, 30, 40, 50, 60, 120],
+        
+        output: {
+           totalPersons: {$sum: 1},
+           avgAge: {$avg: "$dob.age"}}
+        }
+    }
+  ])
+
+  //WE CAN ALSO USE $bucketAuto - with this mongodb generates the buckets 
+  //specify by expressions how the data will be grouped 
+  //the number of buckets 
+  //Mongo check the data and try to distribute the data 
+  //in the required number of buckets - distributed equally or the must closed to that
+  use('personsAnalytics')
+  db.personsData.aggregate([
+    {
+      /**
+       * groupBy: The expression to group by.
+       * buckets: The desired number of buckets
+       * output: {
+       *    outputN: Optional. The output object may contain a single or numerous field names used to accumulate values per bucket.
+       * }
+       * granularity: Optional number series
+       */
+      $bucketAuto: {
+        groupBy: "$dob.age",
+        buckets: 5,
+        output: {
+          totalPersons: {$sum: 1},
+          avgAge: {$avg: "$dob.age"}
+        }
+      }
+    }
+  ])
+
+  //get the top 10 oldest people in the dataset 
+  use("personsAnalytics") 
+  db.personsData.findOne()
+
+  use("personsAnalytics") 
+  db.personsData.aggregate([
+    {
+      $project: {
+        _id: 0,
+        name: {
+          $concat: ["$name.first", " ", "$name.last"]
+        },
+        birthDate: {
+          $toDate: "$dob.date"
+        }
+
+      }
+    },
+    {
+      $sort: {birthDate: 1}
+    },
+    {
+      $limit: 10
+    }
+  ])
+
+  //the same but skip the first 10 oldest 
+  use("personsAnalytics") 
+  db.personsData.aggregate([
+    {
+      $project: {
+        _id: 0,
+        name: {
+          $concat: ["$name.first", " ", "$name.last"]
+        },
+        birthDate: {
+          $toDate: "$dob.date"
+        }
+
+      }
+    },
+    {
+      $sort: {birthDate: 1}
+    },
+    {
+      /**
+       * Provide the number of documents to skip.
+       */
+      $skip: 10
+    }
+    {
+      $limit: 10
+    }
+  ])
+
+  //for optimization purposes - the order of the stages matter 
+  //if we filter (match) after project or sort - is not optimal
+  //mongo perform some optimizaions, processing the stages in the most optimal way
+  //if we match first for example is not a suboptimal setup - 
+  //because in that way we process a small subset of documents 
+  //mongo order the stages in way that is more optimal as possible 
+  //but is recomended to optimize the pipeline to avoid possible performance issues
+
+  //optimization - aggregation pipeline 
+//mongo sort in optimal way this one 
+//with explain - shows that first perform the match stage
+use("personsAnalytics") 
+  db.personsData.explain().aggregate([
+    {
+      $project: {
+        _id: 0,
+        name: {
+          $concat: ["$name.first", " ", "$name.last"]
+        },
+        birthDate: {
+          $toDate: "$dob.date"
+        },
+        gender: 1
+
+      }
+    },
+    {
+      $sort: {birthDate: 1}
+    },
+    {
+      $match: {
+        gender: "male"
+      }
+    },
+
+    {
+      $skip: 10
+    },
+    {
+      $limit: 10
+    }
+  ])
+  
+//the right order of the stages: 
+
+use("personsAnalytics") 
+  db.personsData.explain().aggregate([
+    {
+      $match: {
+        gender: "male"
+      }
+    },
+    {
+      $project: {
+        _id: 0,
+        name: {
+          $concat: ["$name.first", " ", "$name.last"]
+        },
+        birthDate: {
+          $toDate: "$dob.date"
+        }
+      }
+    },
+    {
+      $sort: {birthDate: 1}
+    },
+    {
+      $skip: 10
+    },
+    {
+      $limit: 10
+    }
+  ])
+  
+  //projection optimization
+  //reducing the amount of data passing through the pipeline
+  //pass to next stages only the data that is needed 
+  
+  ////////////////////////////////////////////////////////
+use('test')
+db.artists.insertMany([
+  { "_id" : 1, "last_name" : "Bernard", "first_name" : "Emil", "year_born" : 1868, "year_died" : 1941, "nationality" : "France" },
+  { "_id" : 2, "last_name" : "Rippl-Ronai", "first_name" : "Joszef", "year_born" : 1861, "year_died" : 1927, "nationality" : "Hungary" },
+  { "_id" : 3, "last_name" : "Ostroumova", "first_name" : "Anna", "year_born" : 1871, "year_died" : 1955, "nationality" : "Russia" },
+  { "_id" : 4, "last_name" : "Van Gogh", "first_name" : "Vincent", "year_born" : 1853, "year_died" : 1890, "nationality" : "Holland" },
+  { "_id" : 5, "last_name" : "Maurer", "first_name" : "Alfred", "year_born" : 1868, "year_died" : 1932, "nationality" : "USA" },
+  { "_id" : 6, "last_name" : "Munch", "first_name" : "Edvard", "year_born" : 1863, "year_died" : 1944, "nationality" : "Norway" },
+  { "_id" : 7, "last_name" : "Redon", "first_name" : "Odilon", "year_born" : 1840, "year_died" : 1916, "nationality" : "France" },
+  { "_id" : 8, "last_name" : "Diriks", "first_name" : "Edvard", "year_born" : 1855, "year_died" : 1930, "nationality" : "Norway" }
+])
+
+use('test')
+db.artists.find()
+
+
+//The following operation groups the documents into buckets according to the 
+//year_born field and filters based on the count of documents in the buckets:
+use('test')
+db.artists.aggregate([
+  {
+    $bucket: {
+      groupBy: "$year_born",
+      boundaries: [ 1840, 1850, 1860, 1870, 1880],
+      default: "other", //in case that some document do not fit in any bucket
+      output: {
+         "count": {$sum: 1},
+         "artists": {
+          $push: {
+            name: {
+              $concat: ["$first_name", " ", "$last_name"]            
+            },
+            year_born: "$year_born" 
+          }
+         }
+      }
+    }
+  }
+  ])
+
+use('test')
+db.artists.aggregate([
+  {
+    $bucket: {
+      groupBy: "$year_born",
+      boundaries: [ 1840, 1850, 1860, 1870],
+      default: "other", //in case that some document do not fit in any bucket
+      output: {
+         "count": {$sum: 1},
+         "artists": {
+          $push: {
+            name: {
+              $concat: ["$first_name", " ", "$last_name"]            
+            },
+            year_born: "$year_born" 
+          }
+         }
+      }
+    }
+  },
+  {
+    $match: {
+      count: {$gt: 3}
+    }
+  }
+])
+
+//$facet to perfermo multiple $buckets in one stage
+
+
+db.artwork.insertMany([
+  { "_id" : 1, "title" : "The Pillars of Society", "artist" : "Grosz", "year" : 1926,
+      "price" : NumberDecimal("199.99") },
+  { "_id" : 2, "title" : "Melancholy III", "artist" : "Munch", "year" : 1902,
+      "price" : NumberDecimal("280.00") },
+  { "_id" : 3, "title" : "Dancer", "artist" : "Miro", "year" : 1925,
+      "price" : NumberDecimal("76.04") },
+  { "_id" : 4, "title" : "The Great Wave off Kanagawa", "artist" : "Hokusai",
+      "price" : NumberDecimal("167.30") },
+  { "_id" : 5, "title" : "The Persistence of Memory", "artist" : "Dali", "year" : 1931,
+      "price" : NumberDecimal("483.00") },
+  { "_id" : 6, "title" : "Composition VII", "artist" : "Kandinsky", "year" : 1913,
+      "price" : NumberDecimal("385.00") },
+  { "_id" : 7, "title" : "The Scream", "artist" : "Munch", "year" : 1893
+      /* No price*/ },
+  { "_id" : 8, "title" : "Blue Flower", "artist" : "O'Keefe", "year" : 1918,
+      "price" : NumberDecimal("118.42") }
+])
+
+
+//$facet allows to perform multiple stages in one stage on the same set of input documents
+//process multiple aggregation pipelines 
+//sub-pipelines
+//the output - is an array of documents where each sub-pipeline constains its own fields  
+use('test')
+db.artwork.findOne()
+
+
+use('test')
+db.artwork.aggregate([
+  {
+    /**
+     * outputFieldN: The first output field.
+     * stageN: The first aggregation stage.
+     */
+    $facet: {
+     price:[
+      {
+        $bucket: {
+          groupBy: "$price",
+          boundaries: [0, 200, 400],
+          default: "other",
+          output: {
+             count: {$sum: 1},
+             artwork: {
+              $push: {
+                title: "$title",
+                artist: "$artist",
+                price: "$price"
+              }
+             },
+             avgPrice: {$avg: "$price"}
+          }
+        }
+      }
+     ],
+     year: [
+      {
+        $bucket: {
+          groupBy: "$year",
+          boundaries: [1890, 1910, 1920, 1940],
+          default: "Unknown",
+          output: {
+            count: {$sum: 1},
+            artist: {
+              $push: {
+                title: "$title",
+                artist: "$artist",
+                year: "$year"
+              }
+            }
+           }
+        }
+      }
+      ]
+    }
+  }
+])
