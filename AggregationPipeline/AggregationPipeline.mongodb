@@ -997,3 +997,113 @@ db.artwork.aggregate([
     }
   }
 ])
+
+
+//STORE THE RESULT OF AN AGGREGATION PIPELINE INTO A COLLECTION 
+//
+
+use('personsAnalytics')
+db.personsData.findOne()
+
+//to write the result of a pipeline into a collection use $out stage
+//we add a final stage to save the result into a collection called transformedPersons
+//we do this to use a index on location fields 
+//to take advantage of the index - geospatial data
+use('personsAnalytics')
+db.personsData.aggregate([
+  {
+    $project: {
+      _id: 0,
+      name: 1,
+      email: 1,
+      age: "$dob.age",
+      birthdate: {$toDate: "$dob.date"},  
+      location: {
+        type: "Point", coordinates: [
+          {$convert: {
+            input: "$location.coordinates.longitude",
+            to: "double",
+            onError: 0,
+            onNull: 0,
+          }},
+          {
+            $convert: {
+              input: "$location.coordinates.latitude",
+              to: "double",
+              onError: 0,
+              onNull: 0,
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    $project: {
+      fullName:{
+        $concat: [
+          {$toUpper: {$substrCP: ["$name.first", 0, 1]}},
+          {$substrCP: ["$name.first", 1, {$subtract: [{$strLenCP: "$name.first"}, 1]}]},
+          " ",
+          {$toUpper: {$substrCP: ["$name.last", 0, 1]}},
+          {$substrCP: ["$name.last", 1, {$subtract: [{$strLenCP: "$name.last"}, 1]}]}
+        ]
+      },
+      age: 1,
+      birthdate: 1,
+      location: 1,
+      email: 1
+    }
+  },
+  {
+    $out: "transformedPersons" 
+  }
+])
+
+//geonear stage
+//used to find documents in our collections that are closed to our 
+//current position
+//geojson object - point 
+//$geonear have to be the first stage to take advantages of indexes on locations
+//later we can use any other stages as needed 
+
+//first create a neo index - 2dsphere index
+use("personsAnalytics")
+db.transformedPersons.createIndex({location: "2dsphere"})
+
+//check the index
+use("personsAnalytics")
+db.transformedPersons.getIndexes()
+
+//geolocation query and geolocation or geospatial pipeline
+//geonear to find all documents that are closed to the current positon 
+//refered to the near parameter in the neogear stage 
+//based on the distanceField, maxdistance and query
+//near parameter is a NeoJson object - type - point and respective coordinates
+//num allow to limit the number of documents - is better that use an stage - depricated
+//in that way we can fetch the number of documents instead of get all
+//query: limited to the documents that match the query and use the index 
+//only the first stage can take advantage of indexes and avoid the required 
+//use of a match stage con filter out documents from the pipeline
+use("personsAnalytics")
+db.transformedPersons.aggregate([
+  {
+    /**
+     * near: The point to search near.
+     * distanceField: The calculated distance.
+     * maxDistance: The maximum distance, in meters, documents can be before being excluded from results.
+     * query: Limits results that match the query
+     * includeLocs: Optional. Labels and includes the point used to match the document.
+     * num: Optional. The maximum number of documents to return.
+     * spherical: Defaults to false. Specifies whether to use spherical geometry.
+     */
+    $geoNear: {
+      near: { type: 'Point', coordinates: [-18.5, -42.6] },
+      distanceField: 'distance',
+      maxDistance: 100000, //meters
+      query: {age: {$gt: 30}}
+    }
+  }
+
+])
+//
